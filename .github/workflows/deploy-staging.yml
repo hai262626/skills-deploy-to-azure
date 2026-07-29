@@ -75,10 +75,35 @@ jobs:
     needs: Build-Docker-Image
     name: Deploy app container to Azure
     steps:
+      - name: Normalize Azure credentials secret
+        id: azure-creds
+        shell: bash
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          raw = os.environ["AZURE_CREDENTIALS"].strip()
+          start = raw.find("{")
+          end = raw.rfind("}")
+          if start == -1 or end == -1 or end < start:
+              raise ValueError("AZURE_CREDENTIALS does not contain valid JSON")
+
+          normalized = json.dumps(json.loads(raw[start:end + 1]))
+          output_path = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as output:
+              output.write("creds<<EOF\n")
+              output.write(normalized + "\n")
+              output.write("EOF\n")
+          PY
+
       - name: "Login via Azure CLI"
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ steps.azure-creds.outputs.creds }}
 
       - uses: azure/docker-login@v1
         with:
